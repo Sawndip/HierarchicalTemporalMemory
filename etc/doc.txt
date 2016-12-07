@@ -1,0 +1,152 @@
+Sam G's HTM Documentation
+
+BASIC FILE STRUCTURE
+The general layout of the program is cut into 'models','utils','debug','files', and 'encoders'. The models package contains software 
+models of synapses, dendrite segments, etc. The utils package contains things like random number gen., and a running average class. 
+debug contains the necessary components for debugging the algorithm, real-time. The files packge is used for handling files and such, 
+of course. And finally, encoders contains the encoding functions used by the HTM CLA. 
+
+#
+THE models PACKAGE
+#
+
+The models package consists of these classes:
+
+---> Synapse.h
+------> ProximalSynapse.h
+------> DistalSynapse.h
+---> Segment.h
+------>	ProximalSegment.h
+------>	DistalSegment.h
+---> Column.h
+---> Cell.h
+---> Region.h
+---> InputSpace.h
+
+Since the algorithm works continuously, it is not the duty of the model classes to record their history. Data even
+at t = t-1 will not be available unless it was previously stored externally. As the majority of the temporal memory algorithms
+require the cell and input information at t-1, a buffer object should always be kept, and pointers sent in as parameters.
+Only one time-step back is typically required (assuming predictions-of-predictions, not multi-step predictions), so
+it shouldn't be too much memory. 
+
+================
+Synapse.h
+================
+The Synapse class is an interface for synapses to segments and other objects. A synapse's job is fairly straight-forward. 
+It is accessed by its segment, which stores a vector of synapses. 
+
+	Synapse(init: int, location: class*, owner: class*)
+The synapse class maintains a location for the synapse, a boolean for whether or not the synapse is connected, a
+threshold double for determining the synapses permanence threshold, and a permanence double. Initializing a synapse
+requires the initial value (init) for the permanence and the location in the specific segment where this synapse
+is (location), as well as an owner. The initial permanence is a double, whereas the location and owner are both
+generic pointers. 
+
+	update(double inc): void
+The only public method available to the segment is the update() method, which takes an increment value (inc) and
+adjusts the permanence, and connection, accordingly. 
+
+================
+(Synapse.h) -> ProximalSynapse.h
+================
+The ProximalSynapse class is a child-class of Synapse.h. The proximal synapses (owned by a proximal dendrite segment) connect
+to locations in the input space for a region. Columns in the CLA, which own proximal segments, and therefore proximal synapses,
+look at the input space, and compress it into a sparse-distributed representation in the form of the column space. 
+Active columns are 1's, and inactive columns are 0's. 
+
+This is in contrast with distal synapses, which connect to cells within the cell space (technically also can be considered the
+column space). 
+
+
+================
+(Synapse.h) -> DistalSynapse.h
+================
+The DistalSynapse class is a child-class of Synapse.h. Distal synapses are owned by distal segments, which in turn are owned by
+cells in the cell space. Distal synapses connect to other cells. In this way, a single cell is connected to many other cells
+in the area via the distal segment, made up of distal synapses. 
+
+================
+Segment.h
+================
+The Segment class is an interface for segments, which own a vector of Synapse objects, along with the relevant information
+such as segment activity.
+
+================
+(Segment.h) -> ProximalSegment.h
+================
+The ProximalSegment class is a child-class of Segment.h.
+
+================
+(Segment.h) -> DistalSegment.h
+================
+The DistalSegment class is a child-class of Segment.h.
+
+================
+Cell.h
+================
+The Cell class implements a single cell structure at a single time. 
+
+================
+Column.h
+================
+The Column class implements a single column structure at a single time. A column is really a container for cells, though it does not own
+the cells. Rather, it uses a pointer to the cell space owned by the region that starts at the correct starting point. The cell space contains
+all cells, which are technically grouped into local groups of cells - one group of cells per column. The only reason the cells are not 
+owned by the individual columns is due to ease-of-access for the algorithms. 
+
+================
+Region.h
+================
+The Region class manages all of a region's cells and columns at _one_ time step in the CLA. Regions must be explicitly stored for reference
+which is necessary for temporal memory and pooling. 
+
+	Region()
+Default constructor. Creates a default configuration (see Config), and sets the region owner as a nullptr. 
+
+	Region(int regID, struct Config conf, InputSpace in, HTM * own)
+Sets the region id to regID, the configuration userParameters to conf, the input space to in, and the owner to an HTM object. The column space
+is initialized with initialized columns.
+
+	bool initializeColumns()
+Initializes all columns using parameters specified in userParameters. Returns true if columns were successfully initialized.
+
+	bool initializeCells()
+Initializes all cells using parameters specified in userParameters. Returns true if cells were successfully initialized.
+
+	Cell * getCell(int i, int col)
+Takes in two numbers - a column, and a cell within that column. It returns a pointer to cell i in column col.
+
+	Cell * getCell(int i)
+Takes in a single number - a cell within the complete cell space. It returns a pointer to cell i in the cell space.
+
+================
+InputSpace.h
+================
+The InputSpace class is a container for input data (binary) for a region at a single time step.
+
+================
+Config.h
+================
+The Config class contains only a struct, which stores user-defined and region-specific parameters.
+Parameters:
+	int nRegions				Number of regions in the hierarchy. The same for all configs.
+	int nCellsPerCol			Number of cells in each column
+	int nProxSynapses			Number of connections to the input for each column. Usually about 50% of the input width
+	int inputWidth				Number of input bits in the input space
+	int maxSegments				Maximum number of distal segments for a cell, as they can have many. 
+	int neighborhoodSize		The size of the column neighborhoods. Only the columns with the highest overlap in the neighborhood are active, others are inhibited
+	int receptiveFieldSize		The column's radius of view of the input. For example, only 50 input bits somewhere in the middle. 
+	
+	float permThreshold			The threshold for connection of synapses. 
+	float minActiveDuty			The minimum active duty cycle for a column. When the active duty cycle falls below, the column is boosted
+	float minOverlapDuty		The minimum overlap duty cycle (how often gets overlap > minOverlap) before a column is boosted
+	float percentCompress		Used to determine the number of columns. Represents the percent of the input space for number of columns. For example, if the input
+								space is 1000 bits, and percentCompress is 10% (0.1), then there will be 100 columns. This is used in place of an explicit number 
+								of columns. 
+
+
+================
+HTM.h
+================
+The HTM class is a container for all the regions and spaces in the hierarchy, at all relevant time steps.
+
